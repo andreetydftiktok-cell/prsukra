@@ -1,0 +1,44 @@
+name: RSS Parser
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # каждые 5 минут (минимум для GitHub Actions)
+  workflow_dispatch:         # позволяет запустить вручную кнопкой в GitHub
+
+# Нужно, чтобы задача могла закоммитить обновлённые history.json/posted_topics.json
+permissions:
+  contents: write
+
+jobs:
+  run-parser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4       # страховка: не даём одному запуску залипнуть дольше цикла
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run parser (single pass)
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
+          RUN_ONCE: "true"
+        run: python parser.py
+
+      - name: Save history back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          for f in history.json posted_topics.json; do
+            [ -f "$f" ] && git add "$f"
+          done
+          git diff --staged --quiet || git commit -m "chore: update history [skip ci]"
+          git push
