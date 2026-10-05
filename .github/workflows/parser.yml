@@ -1,46 +1,45 @@
-name: RSS Parser
+name: RSS News Parser
 
 on:
   schedule:
-    - cron: '*/5 * * * *'   # кожні 5 хвилин
-  workflow_dispatch:         # запуск вручну
-
-permissions:
-  contents: write
+    # Запуск каждые 10 минут, чтобы процессы не накладывались друг на друга
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Возможность запустить вручную из вкладки Actions
 
 jobs:
   run-parser:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 10 # Увеличено с 4 до 10 минут, чтобы скрипт успевал сохранить историю
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests feedparser beautifulsoup4 openai python-dotenv
 
       - name: Run parser (single pass)
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
-          RUN_ONCE: "true"
+          RUN_ONCE: 'true'
         run: python parser.py
 
       - name: Save history back to repo
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          for f in history.json posted_topics.json; do
-            [ -f "$f" ] && git add "$f"
-          done
-          if ! git diff --staged --quiet; then
-            git commit -m "chore: update history [skip ci]"
-            git pull --rebase origin main
-            git push
-          fi
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git add history.json posted_topics.json
+          git commit -m "update history [skip ci]" || echo "No changes to commit"
+          git push
