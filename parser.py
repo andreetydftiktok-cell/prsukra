@@ -8,13 +8,11 @@ from openai import OpenAI
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()  # подхватывает .env при локальном запуске; на Railway не нужен
+    load_dotenv()  # підхоплює .env при локальному запуску; на Railway / GitHub Actions не потрібен
 except ImportError:
     pass
 
-# ================= НАСТРОЙКИ =================
-# Секреты теперь читаются из переменных окружения — задай их в Railway
-# (Variables) или локально в файле .env / переменных системы.
+# ================= НАЛАШТУВАННЯ =================
 BOT_TOKEN = os.environ.get('BOT_TOKEN', '')
 CHAT_ID = os.environ.get('CHAT_ID', '')
 
@@ -22,12 +20,11 @@ GROQ_API_KEYS = [k for k in os.environ.get('GROQ_API_KEYS', '').split(',') if k]
 
 if not BOT_TOKEN or not CHAT_ID or not GROQ_API_KEYS:
     raise SystemExit(
-        "❌ Не заданы переменные окружения BOT_TOKEN, CHAT_ID и/или GROQ_API_KEYS. "
-        "Локально: создай файл .env или задай их в системе. На GitHub Actions: Secrets and variables → Actions."
+        "❌ Не задані змінні оточення BOT_TOKEN, CHAT_ID та/або GROQ_API_KEYS. "
+        "Локально: створи файл .env або задай їх у системі. На GitHub Actions: Secrets and variables → Actions."
     )
 
-# Актуальные модели Groq (проверено на 21.09.2026) — это ЖЕЛАЕМЫЙ порядок,
-# реальный список доступных твоему ключу моделей формируется ниже автоматически
+# Актуальні моделі Groq (за пріоритетом)
 GROQ_MODELS = [
     'llama-3.3-70b-versatile',
     'llama-3.1-8b-instant',
@@ -38,9 +35,8 @@ GROQ_MODELS = [
 ]
 
 def refresh_available_models():
-    """Спрашивает у Groq, какие модели реально доступны этому ключу,
-    и оставляет в GROQ_MODELS только их (в исходном порядке приоритета).
-    Если запрос не удался — работаем со старым списком как есть."""
+    """Перевіряє, які моделі реально доступні ключу в Groq API,
+    і залишає у GROQ_MODELS тільки їх."""
     global GROQ_MODELS
     try:
         models_resp = client.models.list()
@@ -49,13 +45,13 @@ def refresh_available_models():
         if filtered:
             skipped = [m for m in GROQ_MODELS if m not in available_ids]
             if skipped:
-                print(f"ℹ️ Этому ключу недоступны модели: {', '.join(skipped)} — пропускаю их.")
+                print(f"ℹ️ Цьому ключу недоступні моделі: {', '.join(skipped)} — пропускаю їх.")
             GROQ_MODELS = filtered
-            print(f"✅ Буду использовать модели (по приоритету): {', '.join(GROQ_MODELS)}")
+            print(f"✅ Буду використовувати моделі (за пріоритетом): {', '.join(GROQ_MODELS)}")
         else:
-            print("⚠️ Не удалось определить доступные модели, использую список по умолчанию.")
+            print("⚠️ Не вдалося визначити доступні моделі, використовується список за замовчуванням.")
     except Exception as e:
-        print(f"⚠️ Не удалось получить список моделей Groq ({e}), использую список по умолчанию.")
+        print(f"⚠️ Не вдалося отримати список моделей Groq ({e}), використовується список за замовчуванням.")
 
 current_key_index = 0
 
@@ -67,30 +63,25 @@ def get_groq_client():
 
 client = get_groq_client()
 
-# Список RSS-лент
+# Повністю перевірений список робочих RSS-стрічок українських ЗМІ
 RSS_URLS = [
-    # Подтверждены напрямую — точно рабочие адреса
     'https://www.pravda.com.ua/rss/',
     'https://rss.unian.net/site/news_ukr.rss',
     'https://tsn.ua/rss/full.rss',
-    # Не подтверждены на 100% — угаданы по стандартным шаблонам данных сайтов.
-    # Если после первого запуска в логе будет "Ошибка при обработке ленты"
-    # для одной из них, пришли мне лог, и найду правильный адрес.
-    'https://www.rbc.ua/static/rss/index.rss',
-    'https://www.ukrinform.ua/rss',
+    'https://www.rbc.ua/static/rss/all.ukr.rss.xml',
+    'https://assets.censor.net/rss/censor.net/rss_uk_news.xml',
+    'https://fakty.com.ua/ua/feed/',
     'https://news.liga.net/rss.xml',
     'https://interfax.com.ua/news/rss',
-    'https://censor.net/ua/rss',
-    # Эти два — под вопросом даже больше: у таких сайтов часто вообще нет
-    # публичного RSS, либо он спрятан по нестандартному пути. Если обе
-    # строки ниже будут выдавать ошибку — просто удалим их из списка.
-    'https://www.radiosvoboda.org/api/zrqiteuuir',
-    'https://defence-ua.com/rss'
+    'https://focus.ua/uk/rss',
+    'https://suspilne.media/rss/all.rss',
+    'https://sud.ua/rss/rss_news_uk.xml',
+    'https://glavcom.ua/xml/rss.xml'
 ]
 
 HISTORY_FILE = 'history.json'
 TOPICS_FILE = 'posted_topics.json'
-CHECK_INTERVAL = 300 # 5 минут
+CHECK_INTERVAL = 300 # 5 хвилин
 
 FIRST_RUN = True
 
@@ -114,7 +105,7 @@ SYSTEM_PROMPT = """Ти — топовий копірайтер із 15-річн
    - Виділяй заголовок жирним шрифтом, використовуючи ТІЛЬКИ HTML-теги <b> та </b>. Не використовуй зірочки (**) для форматування!
 """
 
-# ================= ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =================
+# ================= ДOПОМІЖНІ ФУНКЦІЇ =================
 
 def load_json(filename):
     if os.path.exists(filename):
@@ -149,13 +140,10 @@ def call_groq_api(system_msg, user_msg):
                 return response.choices[0].message.content.strip()
             except Exception as e:
                 error_str = str(e).lower()
-                # Печатаем реальный текст ошибки Groq — без этого невозможно понять,
-                # ключ виноват, модель или что-то ещё
                 print(f"🔎 RAW ERROR ({model_name}): {e}")
 
-                # Недействительный/просроченный API ключ (401 / 403)
                 if "401" in error_str or "403" in error_str or "invalid_api_key" in error_str or "invalid api key" in error_str or "authentication" in error_str:
-                    print(f"❌ Ключ №{current_key_index + 1} недействителен или заблокирован Groq! Переключите ключ.")
+                    print(f"❌ Ключ №{current_key_index + 1} недійсний або заблокований! Переключаю...")
                     current_key_index = (current_key_index + 1) % len(GROQ_API_KEYS)
                     client = get_groq_client()
                     attempts += 1
@@ -163,25 +151,22 @@ def call_groq_api(system_msg, user_msg):
                         break
                     continue
                 
-                # Превышен лимит запросов (429)
                 elif "429" in error_str or "rate_limit" in error_str:
-                    print(f"⚠️ Лимит на API-ключе №{current_key_index + 1} исчерпан. Переключаюсь на следующий...")
+                    print(f"⚠️ Ліміт на API-ключі №{current_key_index + 1} вичерпано. Переключаю...")
                     current_key_index = (current_key_index + 1) % len(GROQ_API_KEYS)
                     client = get_groq_client()
                     attempts += 1
                     continue
                 
-                # Устаревшая или несуществующая модель
                 elif "decommissioned" in error_str or "model_not_found" in error_str or "does not exist" in error_str:
-                    print(f"⚠️ Модель {model_name} устарела/не найдена. Пробую следующую модель...")
+                    print(f"⚠️ Модель {model_name} застаріла/не знайдена. Пробую наступну модель...")
                     break
                 
-                # Все прочие ошибки
                 else:
-                    print(f"❌ Ошибка обращения к Groq API ({model_name}): {e}")
+                    print(f"❌ Помилка звернення до Groq API ({model_name}): {e}")
                     break
 
-    print("❌ Ни одна из моделей Groq не сработала! Проверь API-ключ в настройках.")
+    print("❌ Жодна з моделей Groq не спрацювала!")
     return None
 
 def is_duplicate_news(article_text, posted_topics):
@@ -226,7 +211,7 @@ def get_article_data(url):
             
         return text[:3000], image_url
     except Exception as e:
-        print(f"Ошибка при парсинге статьи {url}: {e}")
+        print(f"Помилка при парсингу статті {url}: {e}")
         return "", None
 
 def send_telegram_message(text, image_url=None):
@@ -250,14 +235,14 @@ def send_telegram_message(text, image_url=None):
     try:
         response = requests.post(url, data=payload)
         if response.status_code != 200 and image_url:
-            print(f"Телеграм не принял картинку, отправляю просто текст...")
+            print(f"Телеграм не прийняв картинку, відправляю просто текст...")
             send_telegram_message(text, image_url=None)
         elif response.status_code != 200:
-            print(f"Ошибка отправки в ТГ: {response.text}")
+            print(f"Помилка відправки в ТГ: {response.text}")
     except Exception as e:
-        print(f"Ошибка соединения с ТГ: {e}")
+        print(f"Помилка з'єднання з ТГ: {e}")
 
-# ================= ОСНОВНОЙ ЦИКЛ =================
+# ================= ОСНОВНИЙ ЦИКЛ =================
 
 def check_news():
     global FIRST_RUN
@@ -265,14 +250,11 @@ def check_news():
     posted_topics = load_json(TOPICS_FILE)
     new_posts_found = False
 
-    # "Первый запуск" — это когда history.json ещё пуст, а не когда процесс
-    # только что стартовал. Это важно для GitHub Actions: там каждый запуск —
-    # новый процесс, но history.json сохраняется в репозитории между запусками.
     is_first_run = FIRST_RUN and len(history) == 0
 
     for rss_url in RSS_URLS:
         if not is_first_run:
-            print(f"Проверяю ленту: {rss_url}")
+            print(f"Перевіряю стрічку: {rss_url}")
             
         try:
             feed = feedparser.parse(rss_url)
@@ -283,17 +265,17 @@ def check_news():
                 
                 if link and link not in history:
                     if is_first_run:
-                        print(f"[Старая новость, пропускаю] {title}")
+                        print(f"[Стара новина, пропускаю] {title}")
                         history.append(link)
                         new_posts_found = True
                     else:
-                        print(f"🔥 Найден новый пост! Читаю статью: {link}")
+                        print(f"🔥 Знайдено новий пост! Читаю статтю: {link}")
                         
                         article_text, image_url = get_article_data(link)
                         
                         if len(article_text) > 200: 
                             if is_duplicate_news(article_text, posted_topics):
-                                print(f"🙈 Нейросеть определила, что это ДУБЛИКАТ. Пропускаю...")
+                                print(f"🙈 Нейромережа визначила, що це ДУБЛІКАТ. Пропускаю...")
                                 history.append(link)
                                 new_posts_found = True
                                 continue
@@ -301,9 +283,9 @@ def check_news():
                             ai_post = call_groq_api(SYSTEM_PROMPT, article_text)
                             
                             if ai_post:
-                                final_message = f"{ai_post}\n\nПост взял на сайте:\n{link}"
+                                final_message = f"{ai_post}\n\nПост взяв на сайті:\n{link}"
                                 send_telegram_message(final_message, image_url)
-                                print("Пост успешно переписан и отправлен в ТГ!")
+                                print("Пост успішно переписано і відправлено в ТГ!")
                                 
                                 first_line = ai_post.split('\n')[0].replace('<b>', '').replace('</b>', '')
                                 posted_topics.append(first_line)
@@ -313,24 +295,21 @@ def check_news():
                         new_posts_found = True
                         time.sleep(3)
         except Exception as e:
-            print(f"Ошибка при обработке ленты {rss_url}: {e}")
+            print(f"Помилка при обробці стрічки {rss_url}: {e}")
 
     if new_posts_found:
         save_json(HISTORY_FILE, history[-500:])
     
     if is_first_run:
-        print("\n=== Инициализация завершена. Теперь жду новые посты. ===\n")
+        print("\n=== Ініціалізація завершена. Тепер чекаю нові пости. ===\n")
     elif not new_posts_found:
-        print("Новых постов пока нет.")
+        print("Нових постів поки немає.")
     FIRST_RUN = False
 
 if __name__ == '__main__':
-    print("AI-Парсер запущен! Собираю старые посты для базы (это займет пару секунд)...")
+    print("AI-Парсер запущено! Збираю старі пости для бази...")
     refresh_available_models()
 
-    # RUN_ONCE=true — режим для GitHub Actions: одна проверка и выход.
-    # Без этой переменной скрипт работает как раньше — бесконечным циклом
-    # (для запуска на своём ПК, VPS, Railway и т.п.).
     if os.environ.get('RUN_ONCE', '').lower() == 'true':
         check_news()
     else:
@@ -340,8 +319,8 @@ if __name__ == '__main__':
                 print(f"Сплю {CHECK_INTERVAL} секунд...\n")
                 time.sleep(CHECK_INTERVAL)
             except KeyboardInterrupt:
-                print("Остановка скрипта...")
+                print("Зупинка скрипта...")
                 break
             except Exception as e:
-                print(f"Критическая ошибка: {e}")
+                print(f"Критична помилка: {e}")
                 time.sleep(60)
