@@ -2,14 +2,13 @@ name: RSS News Parser
 
 on:
   schedule:
-    # Запуск каждые 10 минут, чтобы процессы не накладывались друг на друга
     - cron: '*/10 * * * *'
-  workflow_dispatch: # Возможность запустить вручную из вкладки Actions
+  workflow_dispatch:
 
 jobs:
   run-parser:
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # Увеличено с 4 до 10 минут, чтобы скрипт успевал сохранить историю
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repo
@@ -39,7 +38,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add history.json posted_topics.json
           git commit -m "update history [skip ci]" || echo "No changes to commit"
+          git pull --rebase origin main
           git push
